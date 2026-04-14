@@ -1,28 +1,24 @@
 #pragma once
 
+#include <map>
 #include <string>
 #include <vector>
 
-enum class ConstraintType {
-  Exact,
-  Minimum
-};
-
 struct FieldConfig {
   std::string name;
-  int bits;
-  ConstraintType constraint;
+  size_t      min_size;
+  bool        is_flexible;
 };
 
-struct InstructionConfig {
-  std::vector<std::string> names;
+struct InstrConfig {
+  std::vector<std::string> insns;
   std::vector<std::string> operands;
-  std::string format;
-  std::string comment;
+  std::string              format;
+  std::string              comment;
 };
 
-struct RawConfig {
-  int inst_len;
-  std::vector<FieldConfig>       fields;
-  std::vector<InstructionConfig> instructions;
+struct IsaDescription {
+  size_t                             total_length;
+  std::map<std::string, FieldConfig> fields;
+  std::vector<InstrConfig>           instructions;
 };
