@@ -6,8 +6,8 @@
 
 class IOutputFormatter {
  public:
-  virtual ~IOutputFormatter()                                              = default;
-  virtual void Format(const LayoutResult& result, std::ostream& os) const  = 0;
+  virtual ~IOutputFormatter()                                             = default;
+  virtual void Format(const LayoutResult& result, std::ostream& os) const = 0;
 };
 
 class JsonOutputFormatter : public IOutputFormatter {

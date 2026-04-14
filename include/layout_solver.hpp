@@ -30,9 +30,9 @@ class BacktrackingLayoutSolver : public ILayoutSolver {
   std::vector<std::pair<int, int>> layout_;
 
   void InitFields();
-  
-  bool FindLayout(size_t field_idx);
-  bool CanPlace(const FieldMeta& field, int lsb, int msb) const;
   void TraceBits(const FieldMeta& field, int lsb, int msb, bool free);
-  bool CheckCapacity(size_t field_idx) const;
+
+  [[nodiscard]] bool FindLayout(const size_t field_idx);
+  [[nodiscard]] bool CanPlace(const FieldMeta& field, int lsb, int msb) const;
+  [[nodiscard]] bool CheckCapacity(size_t field_idx) const;
 };

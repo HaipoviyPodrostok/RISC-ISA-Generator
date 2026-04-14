@@ -36,4 +36,3 @@ struct EncodedInstruction {
 };
 
 using LayoutResult = std::vector<EncodedInstruction>;
-
