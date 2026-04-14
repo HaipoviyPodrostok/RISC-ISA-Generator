@@ -1,12 +1,9 @@
-#include "isa_generator.hpp"
+#include "layout_solver.hpp"
 
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 #include <stdexcept>
 #include <string_view>
-
-using json = nlohmann::json;
 
 namespace {
 
@@ -25,7 +22,12 @@ std::string ToBinaryString(int value, int bits) {
 
 }  // namespace
 
-nlohmann::json IsaGenerator::Generate() {
+LayoutResult BacktrackingLayoutSolver::Solve(const IsaDescription& desc) {
+  desc_ = desc;
+  fields_.clear();
+  free_bits_.clear();
+  layout_.clear();
+
   InitFields();
 
   free_bits_.assign(desc_.instructions.size(),
@@ -37,12 +39,74 @@ nlohmann::json IsaGenerator::Generate() {
                              std::to_string(desc_.total_length) + " bits.");
   }
 
-  nlohmann::json output = nlohmann::json::array();
-  BuildJsonOutput(output);
-  return output;
+  LayoutResult result;
+  int num_fmt   = desc_.instructions.size();
+  int total_len = desc_.total_length;
+
+  for (int fmt_i = 0; fmt_i < num_fmt; ++fmt_i) {
+    const auto&                                    group = desc_.instructions[fmt_i];
+    std::vector<std::tuple<int, int, std::string>> chunks;
+
+    for (size_t fi = 0; fi < fields_.size(); ++fi) {
+      if (std::find(fields_[fi].formats.begin(), fields_[fi].formats.end(), fmt_i) !=
+          fields_[fi].formats.end())
+      {
+        chunks.push_back({layout_[fi].second, layout_[fi].first, fields_[fi].name});
+      }
+    }
+
+    int         res_count = 0;
+    int         bit       = total_len - 1;
+    const auto& fbits     = free_bits_[fmt_i];
+
+    while (bit >= 0) {
+      if (fbits[bit]) {
+        int msb = bit;
+        while (bit >= 0 && fbits[bit])
+          bit--;
+        int lsb = bit + 1;
+        chunks.push_back(
+          {msb, lsb, std::string(FieldResPrefix) + std::to_string(res_count++)});
+      }
+      else {
+        bit--;
+      }
+    }
+
+    std::sort(chunks.begin(), chunks.end(), [](const auto& a, const auto& b) {
+      return std::get<0>(a) > std::get<0>(b);
+    });
+
+    for (size_t insn_idx = 0; insn_idx < group.insns.size(); ++insn_idx) {
+      EncodedInstruction enc_insn;
+      enc_insn.insn = group.insns[insn_idx];
+
+      for (const auto& chunk : chunks) {
+        int         msb  = std::get<0>(chunk);
+        int         lsb  = std::get<1>(chunk);
+        std::string name = std::get<2>(chunk);
+        std::string val  = std::string(ValFlexible);
+
+        if (name == FieldFormat) {
+          val = ToBinaryString(fmt_i, msb - lsb + 1);
+        }
+        else if (name == FieldOpcode) {
+          val = ToBinaryString(insn_idx, msb - lsb + 1);
+        }
+        else if (name.find(FieldResPrefix) == 0) {
+          val = std::string(msb - lsb + 1, '0');
+        }
+
+        enc_insn.fields.push_back({msb, lsb, name, val});
+      }
+      result.push_back(enc_insn);
+    }
+  }
+
+  return result;
 }
 
-void IsaGenerator::InitFields() {
+void BacktrackingLayoutSolver::InitFields() {
   int num_fmt = desc_.instructions.size();
   int f_bits  = (num_fmt > 1) ? std::ceil(std::log2(num_fmt)) : 0;
 
@@ -98,7 +162,7 @@ void IsaGenerator::InitFields() {
   });
 }
 
-bool IsaGenerator::FindLayout(size_t field_idx) {
+bool BacktrackingLayoutSolver::FindLayout(size_t field_idx) {
   if (field_idx == fields_.size())
     return true;
 
@@ -129,7 +193,7 @@ bool IsaGenerator::FindLayout(size_t field_idx) {
   return false;
 }
 
-bool IsaGenerator::CanPlace(const FieldMeta& field, int lsb, int msb) const {
+bool BacktrackingLayoutSolver::CanPlace(const FieldMeta& field, int lsb, int msb) const {
   for (int fmt : field.formats) {
     for (int b = lsb; b <= msb; ++b) {
       if (!free_bits_[fmt][b])
@@ -139,7 +203,7 @@ bool IsaGenerator::CanPlace(const FieldMeta& field, int lsb, int msb) const {
   return true;
 }
 
-void IsaGenerator::TraceBits(const FieldMeta& field, int lsb, int msb, bool free) {
+void BacktrackingLayoutSolver::TraceBits(const FieldMeta& field, int lsb, int msb, bool free) {
   for (int fmt : field.formats) {
     for (int b = lsb; b <= msb; ++b) {
       free_bits_[fmt][b] = free;
@@ -147,7 +211,7 @@ void IsaGenerator::TraceBits(const FieldMeta& field, int lsb, int msb, bool free
   }
 }
 
-bool IsaGenerator::CheckCapacity(size_t field_idx) const {
+bool BacktrackingLayoutSolver::CheckCapacity(size_t field_idx) const {
   int         total_len    = desc_.total_length;
   const auto& placed_field = fields_[field_idx];
 
@@ -182,77 +246,4 @@ bool IsaGenerator::CheckCapacity(size_t field_idx) const {
       return false;
   }
   return true;
-}
-
-void IsaGenerator::BuildJsonOutput(nlohmann::json& output) const {
-  int num_fmt   = desc_.instructions.size();
-  int total_len = desc_.total_length;
-
-  for (int fmt_i = 0; fmt_i < num_fmt; ++fmt_i) {
-    const auto&                                    group = desc_.instructions[fmt_i];
-    std::vector<std::tuple<int, int, std::string>> chunks;
-
-    for (size_t fi = 0; fi < fields_.size(); ++fi) {
-      if (std::find(fields_[fi].formats.begin(), fields_[fi].formats.end(), fmt_i) !=
-          fields_[fi].formats.end())
-      {
-        chunks.push_back({layout_[fi].second, layout_[fi].first, fields_[fi].name});
-      }
-    }
-
-    int         res_count = 0;
-    int         bit       = total_len - 1;
-    const auto& fbits     = free_bits_[fmt_i];
-
-    while (bit >= 0) {
-      if (fbits[bit]) {
-        int msb = bit;
-        while (bit >= 0 && fbits[bit])
-          bit--;
-        int lsb = bit + 1;
-        chunks.push_back(
-          {msb, lsb, std::string(FieldResPrefix) + std::to_string(res_count++)});
-      }
-      else {
-        bit--;
-      }
-    }
-
-    std::sort(chunks.begin(), chunks.end(), [](const auto& a, const auto& b) {
-      return std::get<0>(a) > std::get<0>(b);
-    });
-
-    for (size_t insn_idx = 0; insn_idx < group.insns.size(); ++insn_idx) {
-      nlohmann::json insn_json;
-      insn_json["insn"] = group.insns[insn_idx];
-
-      nlohmann::json fields_json = nlohmann::json::array();
-      for (const auto& chunk : chunks) {
-        int         msb  = std::get<0>(chunk);
-        int         lsb  = std::get<1>(chunk);
-        std::string name = std::get<2>(chunk);
-        std::string val  = std::string(ValFlexible);
-
-        if (name == FieldFormat) {
-          val = ToBinaryString(fmt_i, msb - lsb + 1);
-        }
-        else if (name == FieldOpcode) {
-          val = ToBinaryString(insn_idx, msb - lsb + 1);
-        }
-        else if (name.find(FieldResPrefix) == 0) {
-          val = std::string(msb - lsb + 1, '0');
-        }
-
-        nlohmann::json obj;
-        obj[name] = {
-          {"msb",   msb},
-          {"lsb",   lsb},
-          {"value", val}
-        };
-        fields_json.push_back(obj);
-      }
-      insn_json["fields"] = fields_json;
-      output.push_back(insn_json);
-    }
-  }
 }

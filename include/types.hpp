@@ -22,3 +22,18 @@ struct IsaDescription {
   std::map<std::string, FieldConfig> fields;
   std::vector<InstrConfig>           instructions;
 };
+
+struct FieldAllocation {
+  int         msb;
+  int         lsb;
+  std::string name;
+  std::string value;
+};
+
+struct EncodedInstruction {
+  std::string                  insn;
+  std::vector<FieldAllocation> fields;
+};
+
+using LayoutResult = std::vector<EncodedInstruction>;
+

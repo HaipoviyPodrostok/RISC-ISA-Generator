@@ -1,17 +1,20 @@
 #pragma once
 
-#include <nlohmann/json.hpp>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "types.hpp"
 
-class IsaGenerator {
+class ILayoutSolver {
  public:
-  explicit IsaGenerator(const IsaDescription& desc): desc_(desc) {};
+  virtual ~ILayoutSolver()                               = default;
+  virtual LayoutResult Solve(const IsaDescription& desc) = 0;
+};
 
-  nlohmann::json Generate();
+class BacktrackingLayoutSolver : public ILayoutSolver {
+ public:
+  LayoutResult Solve(const IsaDescription& desc) override;
 
  private:
   struct FieldMeta {
@@ -27,8 +30,7 @@ class IsaGenerator {
   std::vector<std::pair<int, int>> layout_;
 
   void InitFields();
-  void BuildJsonOutput(nlohmann::json& output) const;
-
+  
   bool FindLayout(size_t field_idx);
   bool CanPlace(const FieldMeta& field, int lsb, int msb) const;
   void TraceBits(const FieldMeta& field, int lsb, int msb, bool free);

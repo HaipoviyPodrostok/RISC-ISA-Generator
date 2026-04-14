@@ -22,7 +22,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(SOURCES
     main.cpp
-    src/isa_generator.cpp
+    src/layout_solver.cpp
+    src/output_formatter.cpp
     src/json_parser.cpp
 )
 
